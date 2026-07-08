@@ -1,8 +1,10 @@
 import streamlit as st
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import tempfile
 import os
 import json
+import time
 
 # Configurazione della pagina Streamlit
 st.set_page_config(page_title="Revisore Bozze Redazione", layout="wide", page_icon="📰")
@@ -56,15 +58,26 @@ with st.sidebar:
         save_system_prompt(updated_prompt)
         st.success("System Prompt aggiornato con successo!")
 
-# Input per la chiave API di Google Gemini
-api_key = st.text_input("Inserisci la tua Gemini API Key (o configurala nei Secrets):", type="password")
-if not api_key:
-    # Prova a leggere dai secrets di Streamlit se ospitato online
-    api_key = st.secrets.get("GEMINI_API_KEY", "")
+# Gestione sicura dei Secrets (Evita il crash se avviato in locale senza secrets.toml)
+api_key_env = ""
+try:
+    if "GEMINI_API_KEY" in st.secrets:
+        api_key_env = st.secrets["GEMINI_API_KEY"]
+except Exception:
+    # Ignora l'errore se siamo in locale e il file secrets.toml non esiste
+    pass
 
-if api_key:
-    genai.configure(api_key=api_key)
-else:
+# Input per la chiave API di Google Gemini
+user_key = st.text_input(
+    "Inserisci la tua Gemini API Key (lascia vuoto se già configurata sul server):",
+    type="password",
+    value=api_key_env
+)
+
+# La chiave attiva sarà quella inserita dall'utente o, in alternativa, quella nei Secrets
+active_key = user_key if user_key else api_key_env
+
+if not active_key:
     st.warning("Per favore, inserisci una chiave API di Google Gemini per procedere.")
 
 # Uploader di file
@@ -73,43 +86,61 @@ uploaded_file = st.file_uploader(
     type=["pdf", "png", "jpg", "jpeg"]
 )
 
-if uploaded_file and api_key:
+if uploaded_file and active_key:
     # Salvataggio temporaneo del file su disco per passarlo all'API di Gemini
     with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as temp_file:
         temp_file.write(uploaded_file.getvalue())
         temp_path = temp_file.name
 
-    st.info(f"File caricato: {uploaded_file.name}. Analisi avviata...")
+    st.info(f"File locale pronto per l'invio: {uploaded_file.name}")
 
     # Esecuzione dell'analisi
     if st.button("Avvia Analisi Errori"):
-        with st.spinner("L'intelligenza artificiale sta analizzando la pagina..."):
-            try:
-                # Caricamento del file tramite File API di Gemini (gestisce PDF nativamente)
-                gemini_file = genai.upload_file(path=temp_path)
+        status_box = st.empty()
+        try:
+            # Inizializzazione del nuovo client con il pacchetto aggiornato 'google-genai'
+            client = genai.Client(api_key=active_key)
 
-                # Configurazione del modello con le istruzioni di sistema personalizzate
-                model = genai.GenerativeModel(
-                    model_name="gemini-1.5-pro",  # Modello raccomandato per compiti complessi di lettura
-                    system_instruction=st.session_state.system_prompt
-                )
+            status_box.info("1. Caricamento del file sui server Google in corso...")
+            gemini_file = client.files.upload(file=temp_path)
 
-                # Generazione del report di correzione bozze
-                response = model.generate_content([
+            # Ciclo di polling per verificare che il file sia pronto
+            status_box.info("2. File caricato con successo. Google sta elaborando la pagina (OCR)...")
+            file_info = client.files.get(name=gemini_file.name)
+            while file_info.state.name == "PROCESSING":
+                status_box.warning("Elaborazione in corso sui server Google... Attendi qualche secondo...")
+                time.sleep(3)
+                file_info = client.files.get(name=gemini_file.name)
+
+            if file_info.state.name == "FAILED":
+                raise Exception("L'elaborazione del file è fallita sui server Google.")
+
+            status_box.success("3. Elaborazione completata! Avvio dell'analisi dei refusi...")
+
+            # Chiamata di generazione con la nuova sintassi SDK
+            response = client.models.generate_content(
+                model='gemini-1.5-pro',
+                contents=[
                     gemini_file,
                     "Esegui una revisione completa di questa pagina di giornale seguendo le istruzioni di sistema."
-                ])
+                ],
+                config=types.GenerateContentConfig(
+                    system_instruction=st.session_state.system_prompt,
+                ),
+            )
 
-                # Mostra i risultati nella UI
-                st.subheader("📋 Report Revisione Bozze")
-                st.markdown(response.text)
+            # Rimuoviamo il box dello stato e mostriamo il risultato
+            status_box.empty()
+            st.subheader("📋 Report Revisione Bozze")
+            st.markdown(response.text)
 
-                # Pulizia del file caricato sui server Gemini
-                genai.delete_file(gemini_file.name)
+            # Eliminazione sicura del file dai server remoti
+            client.files.delete(name=gemini_file.name)
 
-            except Exception as e:
-                st.error(f"Si è verificato un errore durante l'analisi: {e}")
-            finally:
-                # Rimozione del file temporaneo locale
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
+        except Exception as e:
+            status_box.empty()
+            st.error(f"Si è verificato un errore durante l'analisi: {e}")
+        finally:
+            # Rimozione del file temporaneo locale
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
