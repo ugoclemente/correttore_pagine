@@ -1,16 +1,15 @@
 import streamlit as st
-from google import genai
-from google.genai import types
-import tempfile
 import os
 import json
-import time
+import tempfile
+import vertexai
+from vertexai.generative_models import GenerativeModel, Part
 
 # Configurazione della pagina Streamlit
 st.set_page_config(page_title="Revisore Bozze Redazione", layout="wide", page_icon="📰")
 
-st.title("📰 Assistente di Revisione Bozze ed Errori")
-st.write("Carica una pagina di giornale (PDF o Immagine) per analizzare refusi, ortografia e impaginazione.")
+st.title("📰 Assistente di Revisione Bozze ed Errori - Vertex AI")
+st.write("Analisi professionale delle pagine di giornale basata sulla configurazione aziendale Vertex AI.")
 
 # File locale per salvare il System Prompt in modo persistente
 PROMPT_FILE = "system_prompt.json"
@@ -22,10 +21,10 @@ La tua analisi deve focalizzarsi sui seguenti aspetti:
 3. Ripetizioni nella Titolazione: Verifica che non vi siano ripetizioni della stessa parola chiave tra occhiello, titolo principale e sommario dello stesso articolo.
 4. Errori Logici e di Contenuto: Contraddizioni interne, date o dati numerici incoerenti.
 
-ATTENZIONE AI FALSI POSITIVI DA SILLABAZIONE (OCR): Durante l'analisi visiva delle colonne di testo, il motore di estrazione potrebbe convertire le parole spezzate a fine riga in termini separati da uno spazio o apparentemente privi di trattino (es. 'del lo', 'Comu nale', 'Condan na', 'ar- restata'). Ignora sistematicamente queste occorrenze. Non segnalare MAI come errore la mancanza di trattini di unione o la presenza di spazi all'interno di parole divise tra due righe consecutive, poiché si tratta di un artefatto tecnico di lettura e non di un vero refuso sulla pagina stampata."""
+ATTENZIONE AI FALSI POSITIVI DA SILLABAZIONE (OCR): Durante l’analisi visiva delle colonne di testo, il motore di estrazione potrebbe convertire le parole spezzate a fine riga in termini separati da uno spazio o apparentemente privi di trattino (es. 'del lo', 'Comu nale', 'Condan na', 'ar- restata'). Ignora sistematicamente queste occorrenze. Non segnalare MAI come errore la mancanza di trattini di unione o la presenza di spazi all'interno di parole divise tra due righe consecutive, poiché si tratta di un artefatto tecnico di lettura e non di un vero refuso sulla pagina stampata."""
 
 
-# Funzioni per caricare/salvare il prompt modificato
+# Funzioni per caricare/salvare il prompt
 def load_system_prompt():
     if os.path.exists(PROMPT_FILE):
         with open(PROMPT_FILE, "r", encoding="utf-8") as f:
@@ -38,109 +37,104 @@ def save_system_prompt(prompt_text):
         json.dump({"prompt": prompt_text}, f, ensure_ascii=False, indent=4)
 
 
-# Inizializzazione del prompt in session state
 if "system_prompt" not in st.session_state:
     st.session_state.system_prompt = load_system_prompt()
 
-# Barra laterale (Sidebar) per la gestione del System Prompt
+# Configurazione del progetto tramite Sidebar (Allineato a vertex_init)
 with st.sidebar:
-    st.header("⚙️ Impostazioni System Prompt")
-    st.write("Modifica le istruzioni dell'AI per affinare il comportamento del modello.")
+    st.header("⚙️ Configurazione Google Cloud")
 
-    updated_prompt = st.text_area(
-        "System Instruction:",
-        value=st.session_state.system_prompt,
-        height=450
-    )
+    # ID Progetto e Regione impostati di default sui tuoi valori attivi
+    gcp_project = st.text_input("GCP Project ID:", value="pagine-automatiche-project")
+    gcp_location = st.text_input("GCP Location (Regione):", value="us-central1")
+
+    st.write("---")
+    st.subheader("🔑 Credenziali Service Account")
+
+    # Rilevamento automatico delle chiavi JSON nella tua cartella locale "json" (come nel tuo codice)
+    json_dir = os.path.join(os.path.dirname(__file__), "json")
+    json_files = []
+    if os.path.exists(json_dir):
+        json_files = [f for f in os.listdir(json_dir) if f.endswith(".json")]
+
+    # Seleziona la chiave dal menu a discesa se presente, altrimenti permette il caricamento manuale
+    if json_files:
+        selected_key = st.selectbox("Seleziona chiave JSON trovata in ./json/:", json_files)
+        json_key_path = os.path.join(json_dir, selected_key)
+    else:
+        st.warning("Nessuna chiave JSON rilevata in `./json/`. Puoi caricarne una qui sotto:")
+        json_key_path = None
+
+    uploaded_key = st.file_uploader("Carica file credenziali JSON:", type=["json"])
+
+    st.write("---")
+    st.subheader("🤖 Modello Generativo")
+    # Menu di scelta per utilizzare gemini-1.5-pro o il nuovo gemini-2.5-pro del tuo modulo
+    model_name = st.selectbox("Modello LLM:", ["gemini-1.5-pro", "gemini-2.5-pro"])
+
+    st.write("---")
+    st.header("✍️ Impostazioni System Prompt")
+    updated_prompt = st.text_area("System Instruction:", value=st.session_state.system_prompt, height=350)
 
     if st.button("Salva ed Applica Prompt"):
         st.session_state.system_prompt = updated_prompt
         save_system_prompt(updated_prompt)
-        st.success("System Prompt aggiornato con successo!")
+        st.success("System Prompt aggiornato!")
 
-# Gestione sicura dei Secrets (Evita il crash se avviato in locale senza secrets.toml)
-api_key_env = ""
-try:
-    if "GEMINI_API_KEY" in st.secrets:
-        api_key_env = st.secrets["GEMINI_API_KEY"]
-except Exception:
-    # Ignora l'errore se siamo in locale e il file secrets.toml non esiste
-    pass
+# Uploader per il documento (PDF o Immagine)
+uploaded_file = st.file_uploader("Carica la pagina del giornale (PDF, PNG, JPG)", type=["pdf", "png", "jpg", "jpeg"])
 
-# Input per la chiave API di Google Gemini
-user_key = st.text_input(
-    "Inserisci la tua Gemini API Key (lascia vuoto se già configurata sul server):",
-    type="password",
-    value=api_key_env
-)
+if uploaded_file:
+    st.info(f"File pronto per l'analisi: {uploaded_file.name}")
 
-# La chiave attiva sarà quella inserita dall'utente o, in alternativa, quella nei Secrets
-active_key = user_key if user_key else api_key_env
-
-if not active_key:
-    st.warning("Per favore, inserisci una chiave API di Google Gemini per procedere.")
-
-# Uploader di file
-uploaded_file = st.file_uploader(
-    "Trascina o seleziona il file della pagina (PDF, PNG, JPG)",
-    type=["pdf", "png", "jpg", "jpeg"]
-)
-
-if uploaded_file and active_key:
-    # Salvataggio temporaneo del file su disco per passarlo all'API di Gemini
-    with tempfile.NamedTemporaryFile(delete=False, suffix=f".{uploaded_file.name.split('.')[-1]}") as temp_file:
-        temp_file.write(uploaded_file.getvalue())
-        temp_path = temp_file.name
-
-    st.info(f"File locale pronto per l'invio: {uploaded_file.name}")
-
-    # Esecuzione dell'analisi
     if st.button("Avvia Analisi Errori"):
-        status_box = st.empty()
-        try:
-            # Inizializzazione del nuovo client con il pacchetto aggiornato 'google-genai'
-            client = genai.Client(api_key=active_key)
+        with st.spinner("Inizializzazione Vertex AI e analisi del layout in corso..."):
+            try:
+                # Gestione dinamica delle credenziali
+                final_key_path = ""
+                if uploaded_key is not None:
+                    # Se l'utente carica una chiave al volo, la salviamo temporaneamente
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as temp_key:
+                        temp_key.write(uploaded_key.getvalue())
+                        final_key_path = temp_key.name
+                elif json_key_path:
+                    final_key_path = json_key_path
+                else:
+                    raise Exception(
+                        "Credenziali JSON non trovate. Carica un file o posizionalo nella cartella `./json/`.")
 
-            status_box.info("1. Caricamento del file sui server Google in corso...")
-            gemini_file = client.files.upload(file=temp_path)
+                # Configurazione ambiente (Stessa identica logica del tuo vertex_init.py)
+                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = final_key_path
+                vertexai.init(project=gcp_project, location=gcp_location)
 
-            # Ciclo di polling per verificare che il file sia pronto
-            status_box.info("2. File caricato con successo. Google sta elaborando la pagina (OCR)...")
-            file_info = client.files.get(name=gemini_file.name)
-            while file_info.state.name == "PROCESSING":
-                status_box.warning("Elaborazione in corso sui server Google... Attendi qualche secondo...")
-                time.sleep(3)
-                file_info = client.files.get(name=gemini_file.name)
+                # Lettura del file in memoria ed estrazione dei byte
+                file_bytes = uploaded_file.getvalue()
+                mime_type = uploaded_file.type
 
-            if file_info.state.name == "FAILED":
-                raise Exception("L'elaborazione del file è fallita sui server Google.")
+                # Creazione del blocco multimediale inline per Vertex AI (massima velocità)
+                media_part = Part.from_data(
+                    data=file_bytes,
+                    mime_type=mime_type
+                )
 
-            status_box.success("3. Elaborazione completata! Avvio dell'analisi dei refusi...")
+                # Istanziazione del modello con le istruzioni di sistema
+                model = GenerativeModel(
+                    model_name,
+                    system_instruction=[st.session_state.system_prompt]
+                )
 
-            # Chiamata di generazione con la nuova sintassi SDK
-            response = client.models.generate_content(
-                model='gemini-1.5-pro',
-                contents=[
-                    gemini_file,
+                # Richiesta diretta senza polling asincrono esterno
+                response = model.generate_content([
+                    media_part,
                     "Esegui una revisione completa di questa pagina di giornale seguendo le istruzioni di sistema."
-                ],
-                config=types.GenerateContentConfig(
-                    system_instruction=st.session_state.system_prompt,
-                ),
-            )
+                ])
 
-            # Rimuoviamo il box dello stato e mostriamo il risultato
-            status_box.empty()
-            st.subheader("📋 Report Revisione Bozze")
-            st.markdown(response.text)
+                st.subheader(f"📋 Report Revisione Bozze (Vertex AI - {model_name})")
+                st.markdown(response.text)
 
-            # Eliminazione sicura del file dai server remoti
-            client.files.delete(name=gemini_file.name)
+                # Rimozione del file temporaneo se è stata usata una chiave caricata al volo
+                if uploaded_key is not None and os.path.exists(final_key_path):
+                    os.remove(final_key_path)
 
-        except Exception as e:
-            status_box.empty()
-            st.error(f"Si è verificato un errore durante l'analisi: {e}")
-        finally:
-            # Rimozione del file temporaneo locale
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
+            except Exception as e:
+                st.error(f"Errore durante l'analisi: {e}")
