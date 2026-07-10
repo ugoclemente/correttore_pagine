@@ -1,140 +1,111 @@
 import streamlit as st
 import os
-import json
 import tempfile
 import vertexai
+from datetime import datetime
 from vertexai.generative_models import GenerativeModel, Part
 
-# Configurazione della pagina Streamlit
-st.set_page_config(page_title="Revisore Bozze Redazione", layout="wide", page_icon="📰")
+# ==============================================================================
+# CONFIGURAZIONE HARDCODED (Modificabile solo qui nel codice sorgente)
+# ==============================================================================
+GCP_PROJECT_ID = "neon-flare-461910-d6"
+GCP_LOCATION = "europe-west8"
+MODEL_NAME = "gemini-2.5-pro"  # Sostituire con "gemini-2.5-pro" se abilitato sul proprio progetto GCP
 
-st.title("📰 Assistente di Revisione Bozze ed Errori - Vertex AI")
-st.write("Analisi professionale delle pagine di giornale basata sulla configurazione aziendale Vertex AI.")
+# Percorso predefinito del file delle credenziali JSON
+JSON_KEY_PATH = os.path.join(os.path.dirname(__file__), "json", "credentials_ugo983.json")
+# ==============================================================================
 
-# File locale per salvare il System Prompt in modo persistente
-PROMPT_FILE = "system_prompt.json"
-DEFAULT_PROMPT = """Sei un correttore di bozze e revisore di testi senior per un quotidiano cartaceo italiano. Il tuo compito è esaminare attentamente le pagine di giornale caricate in formato PDF o immagine per identificare anomalie, refusi, incongruenze e proporre correzioni precise.
+# Configurazione pulita della pagina Streamlit
+st.set_page_config(page_title="Cronache - Revisore di bozze AI", layout="centered", page_icon="📰")
 
-La tua analisi deve focalizzarsi sui seguenti aspetti:
-1. Ortografia e Refusi: Errori di battitura, lettere mancanti, invertite o raddoppiate, uso errato di accenti e apostrofi.
-2. Grammatica e Sintassi: Errori di concordanza, tempi verbali errati, punteggiatura fuori posto.
-3. Ripetizioni nella Titolazione: Verifica che non vi siano ripetizioni della stessa parola chiave tra occhiello, titolo principale e sommario dello stesso articolo.
-4. Errori Logici e di Contenuto: Contraddizioni interne, date o dati numerici incoerenti.
-
-ATTENZIONE AI FALSI POSITIVI DA SILLABAZIONE (OCR): Durante l’analisi visiva delle colonne di testo, il motore di estrazione potrebbe convertire le parole spezzate a fine riga in termini separati da uno spazio o apparentemente privi di trattino (es. 'del lo', 'Comu nale', 'Condan na', 'ar- restata'). Ignora sistematicamente queste occorrenze. Non segnalare MAI come errore la mancanza di trattini di unione o la presenza di spazi all'interno di parole divise tra due righe consecutive, poiché si tratta di un artefatto tecnico di lettura e non di un vero refuso sulla pagina stampata."""
-
-
-# Funzioni per caricare/salvare il prompt
-def load_system_prompt():
-    if os.path.exists(PROMPT_FILE):
-        with open(PROMPT_FILE, "r", encoding="utf-8") as f:
-            return json.load(f).get("prompt", DEFAULT_PROMPT)
-    return DEFAULT_PROMPT
+st.title("📰 Cronache - Assistente per la correzione delle pagine e la rilevazione degli errori")
+st.write("Carica il file pdf per avviare il processo di correzione automatica.")
 
 
-def save_system_prompt(prompt_text):
-    with open(PROMPT_FILE, "w", encoding="utf-8") as f:
-        json.dump({"prompt": prompt_text}, f, ensure_ascii=False, indent=4)
-
-
-if "system_prompt" not in st.session_state:
-    st.session_state.system_prompt = load_system_prompt()
-
-# Configurazione del progetto tramite Sidebar (Allineato a vertex_init)
-with st.sidebar:
-    st.header("⚙️ Configurazione Google Cloud")
-
-    # ID Progetto e Regione impostati di default sui tuoi valori attivi
-    gcp_project = st.text_input("GCP Project ID:", value="pagine-automatiche-project")
-    gcp_location = st.text_input("GCP Location (Regione):", value="us-central1")
-
-    st.write("---")
-    st.subheader("🔑 Credenziali Service Account")
-
-    # Rilevamento automatico delle chiavi JSON nella tua cartella locale "json" (come nel tuo codice)
+# Funzione di fallback per rilevare automaticamente la chiave JSON se il nome cambia
+def get_credentials_path():
+    if os.path.exists(JSON_KEY_PATH):
+        return JSON_KEY_PATH
     json_dir = os.path.join(os.path.dirname(__file__), "json")
-    json_files = []
     if os.path.exists(json_dir):
         json_files = [f for f in os.listdir(json_dir) if f.endswith(".json")]
+        if json_files:
+            return os.path.join(json_dir, json_files[0])
+    return None
 
-    # Seleziona la chiave dal menu a discesa se presente, altrimenti permette il caricamento manuale
-    if json_files:
-        selected_key = st.selectbox("Seleziona chiave JSON trovata in ./json/:", json_files)
-        json_key_path = os.path.join(json_dir, selected_key)
-    else:
-        st.warning("Nessuna chiave JSON rilevata in `./json/`. Puoi caricarne una qui sotto:")
-        json_key_path = None
 
-    uploaded_key = st.file_uploader("Carica file credenziali JSON:", type=["json"])
+# Generazione dinamica della data odierna in lingua italiana per l'ancoraggio temporale dell'AI
+mesi = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre",
+        "novembre", "dicembre"]
+giorni = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"]
+now = datetime.now()
+data_odierna_str = f"{giorni[now.weekday()]} {now.day} {mesi[now.month - 1]} {now.year}"
 
-    st.write("---")
-    st.subheader("🤖 Modello Generativo")
-    # Menu di scelta per utilizzare gemini-1.5-pro o il nuovo gemini-2.5-pro del tuo modulo
-    model_name = st.selectbox("Modello LLM:", ["gemini-1.5-pro", "gemini-2.5-pro"])
+# Definizione del System Prompt blindato con le nuove regole specifiche
+SYSTEM_PROMPT = f"""Sei un correttore di bozze e revisore di testi senior per un quotidiano cartaceo italiano. Il tuo compito è esaminare attentamente le pagine di giornale caricate per identificare anomalie, refusi, incongruenze e proporre correzioni precise.
 
-    st.write("---")
-    st.header("✍️ Impostazioni System Prompt")
-    updated_prompt = st.text_area("System Instruction:", value=st.session_state.system_prompt, height=350)
+IMPORTANTE - ANCORAGGIO TEMPORALE:
+La data odierna corrente è: {data_odierna_str}. Questa data rappresenta il presente/contemporaneo. Pertanto, qualsiasi data sulla pagina che corrisponda a questo giorno o a questo anno (es. l'anno 2026 o date limitrofe) è corretta e contemporanea. NON segnalarla in nessun caso come errore logico o data futura.
 
-    if st.button("Salva ed Applica Prompt"):
-        st.session_state.system_prompt = updated_prompt
-        save_system_prompt(updated_prompt)
-        st.success("System Prompt aggiornato!")
+REGOLE TASSATIVE DI ESCLUSIONE (NON CONSIDERARE ERRORI):
+1. LE "PARTENZE": La presenza del nome della città, della località o della fonte prima dell'occhiello o del testo di un articolo (es. 'Mondiali I campioni', 'Mondragone Il gruppo', 'Maddaloni Lo stratagemma') è una convenzione stilistica intenzionale dell'impaginazione giornalistica. NON segnalare mai come errore la mancanza di spazi, trattini o punteggiatura tra queste parole e il testo successivo.
+2. I RIFERIMENTI AI GIORNALISTI NEI RIMANDI: L'inserimento del cognome del giornalista all'interno dei box di rimando di pagina (es. 'Tallino alle pagine 16 e 17', 'Cicalese a pagina 18', 'Casapulla a pagina 20') è una scelta redazionale voluta. NON considerarla e non segnalarla mai come errore.
+3. FALSI POSITIVI DA OCR: Ignora le parole spezzate a fine riga che presentano spazi o mancano graficamente di trattino di unione nel flusso di lettura (es. 'del lo', 'Comu nale', 'Condan na').
 
-# Uploader per il documento (PDF o Immagine)
-uploaded_file = st.file_uploader("Carica la pagina del giornale (PDF, PNG, JPG)", type=["pdf", "png", "jpg", "jpeg"])
+FOCUS DI ANALISI (CRITERI DI REVISIONE):
+1. Precisione Grammaticale e Lessicale: Concentrati rigorosamente su reali errori ortografici, sintattici, grammaticali o espressioni non idiomatiche in lingua italiana. Sii estremamente rigoroso: ad esempio, l'uso di espressioni come "Non grazie" all'interno di una citazione o discorso diretto (es. 'Io sindaco? Non grazie') costituisce un errore lessicale/idiomatico evidente in italiano e va corretto in "No, grazie" o "No grazie".
+2. Ripetizioni nella Titolazione: Segnala ripetizioni non giustificate della stessa parola chiave tra occhiello, titolo e sommario dello stesso articolo, proponendo sinonimi.
+3. Coerenza tra Didascalia e Immagine: Verifica che l'immagine corrisponda effettivamente ai soggetti descritti nella didascalia associata (es. se la didascalia cita specifici atleti, verifica che siano effettivamente loro presenti nell'immagine)."""
+
+# Caricamento del file della pagina di giornale
+uploaded_file = st.file_uploader("Trascina o seleziona il file della pagina (PDF, PNG, JPG, JPEG)",
+                                 type=["pdf", "png", "jpg", "jpeg"])
 
 if uploaded_file:
     st.info(f"File pronto per l'analisi: {uploaded_file.name}")
 
     if st.button("Avvia Analisi Errori"):
-        with st.spinner("Inizializzazione Vertex AI e analisi del layout in corso..."):
-            try:
-                # Gestione dinamica delle credenziali
-                final_key_path = ""
-                if uploaded_key is not None:
-                    # Se l'utente carica una chiave al volo, la salviamo temporaneamente
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as temp_key:
-                        temp_key.write(uploaded_key.getvalue())
-                        final_key_path = temp_key.name
-                elif json_key_path:
-                    final_key_path = json_key_path
-                else:
-                    raise Exception(
-                        "Credenziali JSON non trovate. Carica un file o posizionalo nella cartella `./json/`.")
+        status_box = st.empty()
+        try:
+            # Recupero automatico del file di credenziali hardcoded
+            credentials_file = get_credentials_path()
+            if not credentials_file:
+                raise Exception(
+                    "Credenziali JSON non trovate. Assicurati che il file JSON delle credenziali sia presente nella cartella `./json/`.")
 
-                # Configurazione ambiente (Stessa identica logica del tuo vertex_init.py)
-                os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = final_key_path
-                vertexai.init(project=gcp_project, location=gcp_location)
+            # Impostazione della variabile d'ambiente per Vertex AI
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_file
 
-                # Lettura del file in memoria ed estrazione dei byte
-                file_bytes = uploaded_file.getvalue()
-                mime_type = uploaded_file.type
+            # Inizializzazione di Vertex AI
+            status_box.info("Inizializzazione della connessione con Vertex AI...")
+            vertexai.init(project=GCP_PROJECT_ID, location=GCP_LOCATION)
 
-                # Creazione del blocco multimediale inline per Vertex AI (massima velocità)
-                media_part = Part.from_data(
-                    data=file_bytes,
-                    mime_type=mime_type
-                )
+            # Caricamento del file in memoria
+            file_bytes = uploaded_file.getvalue()
+            mime_type = uploaded_file.type
 
-                # Istanziazione del modello con le istruzioni di sistema
-                model = GenerativeModel(
-                    model_name,
-                    system_instruction=[st.session_state.system_prompt]
-                )
+            media_part = Part.from_data(
+                data=file_bytes,
+                mime_type=mime_type
+            )
 
-                # Richiesta diretta senza polling asincrono esterno
-                response = model.generate_content([
-                    media_part,
-                    "Esegui una revisione completa di questa pagina di giornale seguendo le istruzioni di sistema."
-                ])
+            # Inizializzazione del modello con le istruzioni di sistema blindate
+            model = GenerativeModel(
+                MODEL_NAME,
+                system_instruction=[SYSTEM_PROMPT]
+            )
 
-                st.subheader(f"📋 Report Revisione Bozze (Vertex AI - {model_name})")
-                st.markdown(response.text)
+            status_box.info("Analisi visiva e testuale in corso sul documento...")
+            response = model.generate_content([
+                media_part,
+                "Esegui una revisione approfondita e rigorosa di questa pagina secondo le istruzioni del System Prompt."
+            ])
 
-                # Rimozione del file temporaneo se è stata usata una chiave caricata al volo
-                if uploaded_key is not None and os.path.exists(final_key_path):
-                    os.remove(final_key_path)
+            status_box.empty()
+            st.subheader("📋 Report Revisione Bozze")
+            st.markdown(response.text)
 
-            except Exception as e:
-                st.error(f"Errore durante l'analisi: {e}")
+        except Exception as e:
+            status_box.empty()
+            st.error(f"Errore durante l'analisi: {e}")
