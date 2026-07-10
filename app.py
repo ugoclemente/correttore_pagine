@@ -75,7 +75,7 @@ st.markdown("""
     }
 
     .app-name {
-        font-family: Impact !important;
+        font-family: 'Anton', 'Impact', sans-serif !important;
         margin: 0;
         font-size: 8.75rem !important;
         line-height: 0.9;
