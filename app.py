@@ -87,7 +87,9 @@ st.markdown("""
     /* 3. Regola specifica per cellulari e schermi piccoli (sotto i 768px) */
     @media (max-width: 768px) {
         .app-name {
+            font-family: 'Anton', 'Impact', sans-serif !important;
             font-size: 3.2rem !important; /* Ridimensiona il carattere per farlo stare su un'unica riga */
+            font-weight: 700;
             letter-spacing: 0px !important;
         }
     }
