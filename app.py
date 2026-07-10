@@ -83,6 +83,14 @@ st.markdown("""
         text-transform: uppercase;
         letter-spacing: 0;
     }
+    
+    /* 3. Regola specifica per cellulari e schermi piccoli (sotto i 768px) */
+    @media (max-width: 768px) {
+        .app-name {
+            font-size: 3.2rem !important; /* Ridimensiona il carattere per farlo stare su un'unica riga */
+            letter-spacing: 0px !important;
+        }
+    }
 
     .app-subtitle {
         margin: 0;
