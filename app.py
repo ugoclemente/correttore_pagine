@@ -18,24 +18,34 @@ JSON_KEY_PATH = os.path.join(os.path.dirname(__file__), "json", "credentials_ugo
 # ==============================================================================
 
 # Configurazione della pagina Streamlit
-st.set_page_config(page_title="Cronache - Revisore AI", layout="centered", page_icon="📰")
+st.set_page_config(page_title="Cronache - Revisore di bozze AI", layout="centered")
 
 # ==============================================================================
-# VESTE GRAFICA: INIEZIONE CSS PERSONALIZZATO (TEMA DARK HI-TECH / NEON BLUE FLUID)
+# VESTE GRAFICA PERSONALIZZATA (TEMA COMPLETAMENTE NERO, BORDI FLUIDI DA 0.5pt)
 # ==============================================================================
 st.markdown("""
 <style>
-    /* 1. Sfondo generale e colore del testo dell'applicazione */
+    /* 1. Rimozione totale della banda bianca e della barra di decorazione superiore di Streamlit */
+    header[data-testid="stHeader"] {
+        visibility: hidden !important;
+        height: 0px !important;
+    }
+    [data-testid="stDecoration"] {
+        display: none !important;
+        height: 0px !important;
+    }
+
+    /* Sfondo completamente nero per l'applicazione */
     .stApp {
-        background-color: #08090b !important;
+        background-color: #000000 !important;
         color: #ffffff !important;
-        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        font-family: 'Cascadia Mono', 'Consolas', 'Courier New', monospace !important;
     }
 
     /* Centratura del contenitore principale */
     .block-container {
-        max-width: 750px !important;
-        padding-top: 3rem !important;
+        max-width: 800px !important;
+        padding-top: 1rem !important;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -43,59 +53,185 @@ st.markdown("""
         text-align: center;
     }
 
-    /* 2. Animazione a fluido scorrevole per i bordi */
-    @keyframes fluid-flow {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
+    /* Centratura e colore bianco per tutti i testi */
+    h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown, .stMarkdown div {
+        text-align: center !important;
+        color: #ffffff !important;
+        justify-content: center !important;
+        font-family: 'Cascadia Mono', 'Consolas', 'Courier New', monospace !important;
     }
 
-    /* Barra decorativa superiore a scorrimento neon */
-    .neon-divider {
-        height: 4px;
+    button, input, textarea, select, small, code, pre, li, a, div {
+        font-family: 'Cascadia Mono', 'Consolas', 'Courier New', monospace !important;
+    }
+
+    .app-masthead {
         width: 100%;
-        background: linear-gradient(90deg, #00d2ff, #0066ff, #00d2ff);
-        background-size: 200% 200%;
-        animation: fluid-flow 3s linear infinite;
-        border-radius: 2px;
-        box-shadow: 0 0 15px rgba(0, 210, 255, 0.8);
-        margin-bottom: 2rem;
+        margin: 0 0 1.35rem 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.2rem;
     }
 
-    /* Centratura ed estetica del titolo e del sottotitolo */
-    h1 {
-        color: #ffffff !important;
-        font-weight: 800 !important;
-        font-size: 2.2rem !important;
-        letter-spacing: -0.5px;
-        margin-bottom: 0.5rem !important;
-        text-align: center !important;
-    }
-    p {
-        color: #a0aec0 !important;
-        font-size: 1.1rem !important;
-        margin-bottom: 2rem !important;
-        text-align: center !important;
+    .app-name {
+        font-family: Impact !important;
+        margin: 0;
+        font-size: 8.75rem !important;
+        line-height: 0.9;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0;
     }
 
-    /* 3. Caricatore file (File Uploader) con bordo a fluido e ombreggiatura glow */
+    .app-subtitle {
+        margin: 0;
+        font-size: 1.75rem !important;
+        text-transform: normal;
+        line-height: 1.1;
+        font-weight: 800;
+    }
+
+    .app-caption {
+        margin: 0 0 0 0;
+        font-size: 0.75rem !important;
+        line-height: 1;
+        color: rgba(255, 255, 255, 0.78) !important;
+    }
+
+    /* 2. Animazione fluttuante del colore del bordo (effetto fluido ultra-sottile) */
+    @keyframes fluid-border-color {
+        0% { 
+            border-color: #00d2ff; 
+            box-shadow: 0 0 158px rgba(0, 210, 255, 0.6); 
+        }
+        50% { 
+            border-color: #0066ff; 
+            box-shadow: 0 0 158px rgba(0, 210, 255, 0.8); 
+        }
+        100% { 
+            border-color: #00d2ff; 
+            box-shadow: 0 0 158px rgba(0, 210, 255, 0.6); 
+        }
+    }
+
+    @keyframes uploader-ambient-shift {
+        0% {
+            transform: translate3d(-7%, -4%, 0) scale(1);
+            opacity: 0.5;
+        }
+        35% {
+            transform: translate3d(6%, 3%, 0) scale(1.08);
+            opacity: 0.88;
+        }
+        70% {
+            transform: translate3d(-3%, 7%, 0) scale(1.1);
+            opacity: 0.72;
+        }
+        100% {
+            transform: translate3d(7%, -3%, 0) scale(1.05);
+            opacity: 0.58;
+        }
+    }
+
+    @keyframes uploader-scan {
+        0% {
+            transform: translateY(-38%);
+            opacity: 0.05;
+        }
+        50% {
+            opacity: 0.22;
+        }
+        100% {
+            transform: translateY(38%);
+            opacity: 0.06;
+        }
+    }
+
+    @keyframes uploader-surface-drift {
+        0% {
+            background-position:
+                10% 18%,
+                88% 74%,
+                52% 46%,
+                0 0,
+                0 0,
+                0 0;
+        }
+        33% {
+            background-position:
+                18% 28%,
+                76% 60%,
+                46% 54%,
+                10px 0,
+                0 12px,
+                0 0;
+        }
+        66% {
+            background-position:
+                8% 34%,
+                84% 56%,
+                58% 42%,
+                -8px 0,
+                0 -10px,
+                0 0;
+        }
+    }
+
+    /* Campo di upload con texture animata minimale e bordo azzurro fluido */
     [data-testid="stFileUploader"] {
-        border: 2px solid transparent !important;
-        border-radius: 12px !important;
-        background-image: linear-gradient(#12151c, #12151c), linear-gradient(90deg, #00d2ff, #0066ff, #00d2ff) !important;
-        background-origin: border-box !important;
-        background-clip: content-box, border-box !important;
-        background-size: 200% 200% !important;
-        animation: fluid-flow 4s linear infinite !important;
-        box-shadow: 0 0 20px rgba(0, 102, 255, 0.35) !important;
-        padding: 12px !important;
+        position: relative;
+        overflow: hidden;
+        isolation: isolate;
+        border: 1pt solid #00d2ff !important;
+        border-radius: 0px !important;
+        animation: fluid-border-color 2s linear infinite, uploader-surface-drift 6.8s ease-in-out infinite alternate !important;
+        padding: 10px !important;
         color: #ffffff !important;
-        margin-bottom: 2rem !important;
+        margin-bottom: 1rem !important;
         display: flex;
         justify-content: center;
+        width: 100% !important;
+        background:
+            radial-gradient(ellipse 140% 110% at 18% 24%, rgba(0, 210, 255, 0.128) 0%, rgba(0, 210, 255, 0.093) 16%, rgba(0, 210, 255, 0.053) 32%, rgba(0, 210, 255, 0.014) 48%, transparent 68%),
+            radial-gradient(ellipse 140% 110% at 78% 68%, rgba(0, 210, 255, 0.122) 0%, rgba(0, 210, 255, 0.088) 16%, rgba(0, 210, 255, 0.050) 32%, rgba(0, 210, 255, 0.013) 50%, transparent 70%),
+            radial-gradient(ellipse 120% 150% at 50% 50%, rgba(0, 210, 255, 0.032) 0%, rgba(0, 210, 255, 0.018) 22%, rgba(0, 210, 255, 0.006) 40%, transparent 62%),
+            repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 22px),
+            repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 22px),
+            linear-gradient(145deg, #181b22 0%, #0c0f14 52%, #141820 100%) !important;
+        background-size: 155% 145%, 155% 145%, 135% 155%, 22px 22px, 22px 22px, 100% 100%;
+        background-position: 10% 18%, 88% 74%, 52% 46%, 0 0, 0 0, 0 0;
     }
 
-    /* Centratura dell'interfaccia interna del caricatore */
+    [data-testid="stFileUploader"]::before {
+        content: "";
+        position: absolute;
+        inset: -18%;
+        z-index: 0;
+        pointer-events: none;
+        background:
+            radial-gradient(ellipse 125% 100% at 24% 30%, rgba(0, 210, 255, 0.128) 0%, rgba(0, 210, 255, 0.090) 20%, rgba(0, 210, 255, 0.038) 38%, transparent 64%),
+            radial-gradient(ellipse 125% 100% at 74% 64%, rgba(0, 210, 255, 0.128) 0%, rgba(0, 210, 255, 0.090) 18%, rgba(0, 210, 255, 0.037) 36%, transparent 62%),
+            radial-gradient(ellipse 100% 130% at 52% 48%, rgba(0, 210, 255, 0.029) 0%, rgba(0, 210, 255, 0.011) 38%, transparent 62%),
+            linear-gradient(120deg, transparent 30%, rgba(255, 255, 255, 0.04) 50%, transparent 70%);
+        filter: blur(26px);
+        animation: uploader-ambient-shift 7.4s ease-in-out infinite alternate;
+    }
+
+    [data-testid="stFileUploader"]::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background:
+            linear-gradient(180deg, transparent 0%, rgba(0, 210, 255, 0.064) 45%, transparent 100%),
+            linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.03) 50%, transparent 100%);
+        mix-blend-mode: screen;
+        animation: uploader-scan 6.2s ease-in-out infinite alternate;
+    }
+
+    /* Centratura dell'interfaccia interna dell'uploader */
     [data-testid="stFileUploader"] section {
         background-color: transparent !important;
         display: flex;
@@ -103,94 +239,176 @@ st.markdown("""
         align-items: center;
         text-align: center;
         justify-content: center;
+        width: 100% !important;
     }
 
-    /* Testi interni dell'uploader */
-    [data-testid="stFileUploader"] label, [data-testid="stFileUploader"] p {
-        color: #ffffff !important;
-        text-align: center !important;
+    [data-testid="stFileUploader"] section,
+    [data-testid="stFileUploader"] section > div,
+    [data-testid="stFileUploader"] small,
+    [data-testid="stFileUploader"] span,
+    [data-testid="stFileUploader"] p {
+        position: relative;
+        z-index: 1;
     }
 
-    /* 4. Pulsante "Avvia Analisi" Hi-Tech con animazione fluid e hover */
-    div.stButton {
+    /* 3. Stilizzazione del pulsante UPLOAD interno (grigio, scritta bianca sempre visibile) */
+    [data-testid="stFileUploaderDropzone"] > span > button {
+        position: relative;
+        background-color: #2b2e3a !important; 
+        color: transparent !important;
+        border: 0.0pt solid #00d2ff !important;
+        border-radius: 0px !important;
+        padding: 6px 20px !important;
+        font-weight: 600 !important;
+        transition: background-color 0.1s ease, transform 0.2s ease !important;
+        overflow: hidden;
+    }
+    [data-testid="stFileUploaderDropzone"] > span > button:hover {
+        background-color: #3e4354 !important; /* Grigio leggermente più chiaro in hover */
+        color: transparent !important;
+        transform: scale(1.02) !important;
+    }
+    [data-testid="stFileUploaderDropzone"] > span > button * {
+        color: transparent !important;
+        opacity: 0 !important;
+    }
+    [data-testid="stFileUploaderDropzone"] > span > button::after {
+        content: "Upload";
+        position: absolute;
+        inset: 0;
         display: flex;
+        align-items: center;
         justify-content: center;
-        width: 100%;
-        margin-top: 1.5rem;
-        margin-bottom: 2.5rem;
-    }
-    div.stButton > button {
-        background-image: linear-gradient(90deg, #00d2ff, #0066ff, #00d2ff) !important;
-        background-size: 200% 200% !important;
-        animation: fluid-flow 3s linear infinite !important;
         color: #ffffff !important;
-        font-weight: 700 !important;
-        font-size: 1.1rem !important;
-        letter-spacing: 0.5px;
-        border: none !important;
-        border-radius: 8px !important;
-        padding: 0.6rem 2.5rem !important;
-        box-shadow: 0 0 15px rgba(0, 102, 255, 0.5) !important;
-        transition: transform 0.2s ease, box-shadow 0.2s ease !important;
-        cursor: pointer;
-    }
-    div.stButton > button:hover {
-        transform: scale(1.04) !important;
-        box-shadow: 0 0 25px rgba(0, 102, 255, 0.8) !important;
-        color: #ffffff !important;
-    }
-    div.stButton > button:active {
-        transform: scale(0.98) !important;
+        font-size: 0.95rem;
+        font-weight: 600;
+        line-height: 1;
+        pointer-events: none;
     }
 
-    /* 5. Box dei messaggi di stato e avvisi centrati */
+    [data-testid="stFileChips"] {
+        width: 100% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 0.55rem !important;
+        flex-wrap: nowrap !important;
+    }
+
+    [data-testid="stFileChip"] {
+        background-color: #2b2e3a !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        color: #ffffff !important;
+        min-width: 0 !important;
+    }
+
+    [data-testid="stFileChip"] [data-testid="stFileChipName"] {
+        color: #ffffff !important;
+    }
+
+    [data-testid="stFileChip"] div:not([data-testid="stFileChipName"]) {
+        color: rgba(255, 255, 255, 0.68) !important;
+    }
+
+    [data-testid="stFileChipDeleteBtn"] button {
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        color: rgba(255, 255, 255, 0.72) !important;
+        padding: 0 !important;
+        min-width: unset !important;
+        min-height: unset !important;
+        transform: none !important;
+        overflow: visible !important;
+    }
+
+    [data-testid="stFileChipDeleteBtn"] button * {
+        color: rgba(255, 255, 255, 0.72) !important;
+        opacity: 1 !important;
+    }
+
+    [data-testid="stFileChipDeleteBtn"] button::after {
+        content: none !important;
+    }
+
+    [data-testid="stFileChipDeleteBtn"] button:hover {
+        background-color: transparent !important;
+        color: #ffffff !important;
+    }
+
+    [data-testid="stFileUploader"] button[aria-label="Add files"] {
+        display: none !important;
+    }
+
+    /* 4. Pulsante principale "Avvia Analisi" coordinato da 0.5pt */
+    [data-testid="stButton"],
+    div.stButton {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        width: 100% !important;
+        margin-top: 1rem;
+        margin-bottom: 2rem;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        text-align: center !important;
+        align-self: center !important;
+    }
+    [data-testid="stButton"] > div,
+    div.stButton > div {
+        width: 100% !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+    [data-testid="stButton"] button,
+    div.stButton button {
+        background-color: #1e1e24 !important;
+        border: 0.1pt solid #00d2ff !important;
+        border-radius: 8px !important;
+        animation: fluid-border-color 4s linear infinite !important;
+        color: #ffffff !important;
+        font-weight: bold !important;
+        font-size: 1rem !important;
+        padding: 8px 30px !important;
+        transition: transform 0.5s ease !important;
+        cursor: pointer;
+        display: block !important;
+        margin: 0 auto !important;
+    }
+    [data-testid="stButton"] button:hover,
+    div.stButton button:hover {
+        transform: scale(1.02) !important;
+        color: #ffffff !important;
+    }
+
+    /* Alert di stato e messaggi */
     .stAlert {
-        background-color: #12151c !important;
-        border: 1px solid #1f242e !important;
+        background-color: #222222 !important;
+        border: 0.5pt solid #1f242e !important;
         color: #ffffff !important;
         border-radius: 8px !important;
         text-align: center !important;
         display: inline-block !important;
         width: 100% !important;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
     }
     .stAlert div {
         justify-content: center !important;
         text-align: center !important;
     }
-
-    /* 6. Pannello del Report finale stile Terminale */
-    .report-card {
-        background-color: #0b0c10 !important;
-        border: 1px solid #0066ff !important;
-        border-radius: 12px !important;
-        padding: 2rem !important;
-        text-align: left !important; /* Allineamento a sinistra all'interno della scheda per la leggibilità del testo */
-        box-shadow: 0 0 25px rgba(0, 102, 255, 0.25) !important;
-        margin-top: 1rem;
-        width: 100%;
-    }
-    .report-card h1, .report-card h2, .report-card h3 {
-        color: #00d2ff !important;
-        text-align: left !important;
-        margin-top: 1.5rem;
-    }
-    .report-card p, .report-card li {
-        color: #e2e8f0 !important;
-        text-align: left !important;
-        font-size: 1rem !important;
-        margin-bottom: 0.5rem !important;
-    }
 </style>
 """, unsafe_allow_html=True)
 
-# Barra neon decorativa superiore
-st.markdown('<div class="neon-divider"></div>', unsafe_allow_html=True)
-
-# Titoli centrati (lo stile CSS gestisce la formattazione)
-st.markdown("<h1>Revisore delle Pagine AI</h1>", unsafe_allow_html=True)
-st.markdown("<p>Rilevamento avanzato di anomalie, refusi tipografici e uniformità stilistica in tempo reale.</p>",
-            unsafe_allow_html=True)
+# Titolo e descrizione principali
+st.markdown("""
+<div class="app-masthead">
+    <p class="app-name">CRONACHE</p>
+    <p class="app-subtitle">Correttore di bozze IA</p>
+    <p class="app-caption">Carica il file per avviare il processo di correzione automatica.</p>
+</div>
+""", unsafe_allow_html=True)
 
 
 # Funzione di fallback per rilevare automaticamente la chiave JSON locale (solo sviluppo offline)
@@ -237,7 +455,7 @@ data_odierna_str = f"{giorni[now.weekday()]} {now.day} {mesi[now.month - 1]} {no
 SYSTEM_PROMPT = f"""Sei un correttore di bozze e revisore di testi senior per un quotidiano cartaceo italiano. Il tuo compito è esaminare attentamente le pagine di giornale caricate per identificare anomalie, refusi, incongruenze e proporre correzioni precise.
 
 IMPORTANTE - ANCORAGGIO TEMPORALE:
-La data odierna corrente è: {data_odierna_str}. Questa data rappresenta il presente/contemporaneo. Pertanto, qualsiasi data sulla pagina che corrisponda a questo giorno o a questo anno (es. l'anno 2026 o date limitrofe) è corretta e contemporanea. NON segnalarla in nessun caso come errore logico o data futura.
+La data odierna corrente è: {data_odierna_str}. Questa data rappresenta il presente/contemporaneo. Pertanto, qualsiasi data sulla pagina che corrisponda a questo giorno o a questo anno (es. l’anno 2026 o date limitrofe) è corretta e contemporanea. NON segnalarla in nessun caso come errore logico o data futura.
 
 REGOLE TASSATIVE DI ESCLUSIONE (NON CONSIDERARE ERRORI):
 1. LE "PARTENZE": La presenza del nome della città, della località o della fonte prima dell'occhiello o del testo di un articolo (es. 'Mondiali I campioni', 'Mondragone Il gruppo', 'Maddaloni Lo stratagemma') è una convenzione stilistica intenzionale dell'impaginazione giornalistica. NON segnalare mai come errore la mancanza di spazi, trattini o punteggiatura tra queste parole e il testo successivo.
@@ -247,15 +465,20 @@ REGOLE TASSATIVE DI ESCLUSIONE (NON CONSIDERARE ERRORI):
 FOCUS DI ANALISI (CRITERI DI REVISIONE):
 1. Precisione Grammaticale e Lessicale: Concentrati rigorosamente su reali errori ortografici, sintattici, grammaticali o espressioni non idiomatiche in lingua italiana. Sii estremamente rigoroso: ad esempio, l'uso di espressioni come "Non grazie" all'interno di una citazione o discorso diretto (es. 'Io sindaco? Non grazie') costituisce un errore lessicale/idiomatico evidente in italiano e va corretto in "No, grazie" o "No grazie".
 2. Ripetizioni nella Titolazione: Segnala ripetizioni non giustificate della stessa parola chiave tra occhiello, titolo e sommario dello stesso articolo, proponendo sinonimi.
-3. Coerenza tra Didascalia e Immagine: Verifica che l'immagine corrisponda effettivamente ai soggetti descritti nella didascalia associata (es. se la didascalia cita specifici atleti, verifica che siano effettivamente loro presenti nell'immagine)."""
+3. Coerenza tra Didascalia e Immagine: Verifica che l'immagine corrisponda effettivamente ai soggetti descritti nella didascalia associata (es. se la didascalia cita specifici atleti, verifica che siano effettivamente loro presenti nell'immagine).
+Rispondi sempre esordendo con la frase iniziale: "Ho analizzato il file caricato."."""
 
 # Caricamento del file della pagina di giornale
-uploaded_file = st.file_uploader("", type=["pdf", "png", "jpg", "jpeg"])
+uploaded_file = st.file_uploader("", type=["pdf", "png", "jpg", "jpeg"], label_visibility="collapsed")
 
 if uploaded_file:
     st.info(f"File pronto per l'analisi: {uploaded_file.name}")
 
-    if st.button("Avvia Analisi Errori"):
+    left_spacer, center_action_col, right_spacer = st.columns([1.4, 1.2, 1.4])
+    with center_action_col:
+        start_analysis = st.button("Avvia analisi", use_container_width=True)
+
+    if start_analysis:
         status_box = st.empty()
         temp_creds_path = None
         try:
@@ -266,7 +489,7 @@ if uploaded_file:
                     "Credenziali Google Cloud mancanti. Configura i Secrets su Streamlit Cloud o inserisci il file JSON nella cartella `./json/`.")
 
             # Inizializzazione di Vertex AI
-            status_box.info("Stabilizzazione del flusso di connessione con Vertex AI...")
+            status_box.info("Inizializzazione della connessione con Vertex AI...")
             vertexai.init(project=GCP_PROJECT_ID, location=GCP_LOCATION)
 
             # Caricamento del file in memoria
@@ -284,22 +507,21 @@ if uploaded_file:
                 system_instruction=[SYSTEM_PROMPT]
             )
 
-            status_box.info("Analisi morfologica e verifica dell'allineamento visivo in corso...")
+            status_box.info("Analisi visiva e testuale in corso sul documento...")
             response = model.generate_content([
                 media_part,
                 "Esegui una revisione approfondita e rigorosa di questa pagina secondo le istruzioni del System Prompt."
             ])
 
             status_box.empty()
-
-            # Mostra i risultati all'interno della scheda personalizzata "cyber-terminal"
-            st.markdown(f'<div class="report-card">{response.text}</div>', unsafe_allow_html=True)
+            st.subheader("Report Revisione Bozze")
+            st.markdown(response.text)
 
         except Exception as e:
             status_box.empty()
             st.error(f"Errore durante l'analisi: {e}")
         finally:
-            # Pulizia sicura della chiave temporanea nel Cloud
+            # Pulizia sicura del file temporaneo nel Cloud
             if temp_creds_path and "gcp_service_account" in st.secrets:
                 if os.path.exists(temp_creds_path):
                     os.remove(temp_creds_path)
