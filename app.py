@@ -188,7 +188,7 @@ st.markdown("""
         animation: fluid-border-color 2s linear infinite, uploader-surface-drift 6.8s ease-in-out infinite alternate !important;
         padding: 10px !important;
         color: #ffffff !important;
-        margin-bottom: 1rem !important;
+        # margin-bottom: 1rem !important;
         display: flex;
         justify-content: center;
         width: 100% !important;
@@ -347,7 +347,7 @@ st.markdown("""
         justify-content: center !important;
         align-items: center !important;
         width: 100% !important;
-        margin-top: 1rem;
+        margin-top: 0rem;
         margin-bottom: 2rem;
         margin-left: auto !important;
         margin-right: auto !important;
@@ -386,16 +386,19 @@ st.markdown("""
 
     /* Alert di stato e messaggi */
     .stAlert {
-        background-color: #222222 !important;
-        border: 0.5pt solid #1f242e !important;
+        background-color: transparent !important;
+        # opacity: 0.2;
+        # border: 0.5pt solid #1f242e !important;
         color: #ffffff !important;
-        border-radius: 8px !important;
+        # border-radius: 8px !important;
         text-align: center !important;
         display: inline-block !important;
-        width: 100% !important;
+        # width: 100% !important;
     }
     .stAlert div {
+        padding: 0px !important;
         justify-content: center !important;
+        background-color: transparent !important;
         text-align: center !important;
     }
 </style>
